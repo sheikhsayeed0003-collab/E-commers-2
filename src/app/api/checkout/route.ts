@@ -42,17 +42,42 @@ export async function POST(req: Request) {
 
   const secret = process.env.STRIPE_SECRET_KEY;
   if (secret && secret.startsWith("sk_")) {
-    const Stripe = (await import("stripe")).default;
-    const stripe = new Stripe(secret);
-    const intent = await stripe.paymentIntents.create({
-      amount: Math.round(totalUsd * 100),
-      currency: "usd",
-      metadata: { orderId: order.id },
-      automatic_payment_methods: { enabled: true },
-    });
-    order.stripePaymentId = intent.id;
-    saveState();
-    return NextResponse.json({ order, clientSecret: intent.client_secret });
+    try {
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(secret);
+      const intent = await stripe.paymentIntents.create({
+        amount: Math.round(totalUsd * 100),
+        currency: "usd",
+        metadata: { orderId: order.id },
+        payment_method: "pm_card_visa",
+        confirm: true,
+        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+      });
+      order.stripePaymentId = intent.id;
+      if (intent.status === "succeeded") {
+        order.paymentStatus = "paid";
+        if (session) {
+          const user = db.users().find((u) => u.id === session.id);
+          if (user) {
+            user.loyaltyPoints += Math.round(totalUsd);
+            user.pendingPoints = Math.max(0, user.pendingPoints - Math.round(totalUsd));
+            user.tier = tierFromPoints(user.loyaltyPoints);
+          }
+        }
+      }
+      saveState();
+      return NextResponse.json({
+        order,
+        clientSecret: intent.client_secret,
+        publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || null,
+        stripe: true,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Stripe payment failed";
+      order.paymentStatus = "failed";
+      saveState();
+      return NextResponse.json({ error: message, order }, { status: 402 });
+    }
   }
 
   order.paymentStatus = "paid";

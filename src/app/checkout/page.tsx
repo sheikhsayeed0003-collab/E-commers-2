@@ -30,6 +30,10 @@ export default function CheckoutPage() {
     });
     const data = await res.json();
     setLoading(false);
+    if (!res.ok || data.error) {
+      alert(data.error || "Payment failed");
+      return;
+    }
     if (data.order) {
       clearCart();
       router.push(`/checkout/success?id=${data.order.id}`);
@@ -44,7 +48,11 @@ export default function CheckoutPage() {
     <div className="mx-auto grid max-w-5xl gap-12 px-5 py-16 md:grid-cols-2">
       <form onSubmit={pay} className="space-y-4">
         <h1 className="text-3xl font-light">Checkout</h1>
-        <p className="text-sm text-muted">Stripe Elements-style card field. Live Stripe keys enable real PaymentIntents and webhooks.</p>
+        <p className="text-sm text-muted">
+          {process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.startsWith("pk_")
+            ? "Stripe test mode connected — payments create real PaymentIntents."
+            : "Add Stripe keys in .env.local for live PaymentIntents (demo mode works without them)."}
+        </p>
         {(["name", "line1", "city", "postal"] as const).map((k) => (
           <input
             key={k}
