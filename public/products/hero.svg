@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200" viewBox="0 0 1800 1200">
+  <defs>
+    <linearGradient id="h" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#8a7a6a"/>
+      <stop offset="55%" stop-color="#3d342c"/>
+      <stop offset="100%" stop-color="#151515"/>
+    </linearGradient>
+  </defs>
+  <rect width="1800" height="1200" fill="url(#h)"/>
+  <circle cx="1280" cy="420" r="280" fill="rgba(255,255,255,0.06)"/>
+  <text x="160" y="920" fill="rgba(255,255,255,0.85)" font-family="Helvetica,Arial,sans-serif" font-size="72" letter-spacing="14">MAISON</text>
+</svg>

@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-outfit), "Helvetica Neue", Helvetica, sans-serif;
+  --font-display: var(--font-cormorant), Georgia, serif;
+  --color-ink: #0a0a0a;
+  --color-paper: #f7f6f3;
+  --color-muted: #6f6c66;
+  --color-line: #e4e1db;
+  --color-accent: #9a3412;
+}
+
+html,
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+body {
+  min-height: 100vh;
+}
+
+a {
+  text-decoration: none;
+}
+
+::selection {
+  background: #111;
+  color: #fff;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.marquee-track {
+  animation: marquee 32s linear infinite;
+}
+
+.hero-video {
+  filter: contrast(1.06) saturate(0.88);
+}
+
+.product-card:hover .product-img-a {
+  opacity: 0;
+}
+
+.product-card:hover .product-img-b {
+  opacity: 1;
+  transform: scale(1.045);
+}
+
+.section-label {
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
