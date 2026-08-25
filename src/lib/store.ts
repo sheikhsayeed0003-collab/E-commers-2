@@ -22,22 +22,18 @@ type State = {
   settings: SiteSettings;
 };
 
+const g = globalThis as unknown as { __maisonState?: State; __maisonMtime?: number };
+
+function isVercel() {
+  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+}
+
 function dataPath() {
-  const cwd = process.cwd();
-  const here = path.join(cwd, "data", "maison.json");
-  const nested = path.join(cwd, "E-commers 2", "data", "maison.json");
-  try {
-    const pkg = JSON.parse(readFileSync(path.join(cwd, "package.json"), "utf8"));
-    if (pkg.name === "maison-atelier") return here;
-  } catch {
-    /* ignore */
-  }
-  if (existsSync(path.join(cwd, "src", "lib", "store.ts"))) return here;
-  return existsSync(nested) || existsSync(path.join(cwd, "E-commers 2", "package.json")) ? nested : here;
+  return path.join(process.cwd(), "data", "maison.json");
 }
 
 function seed(): State {
-  const adminHash = bcrypt.hashSync("Admin123!", 10);
+  const adminHash = bcrypt.hashSync(process.env.SEED_ADMIN_PASSWORD || "Admin123!", 10);
   const demoHash = bcrypt.hashSync("Demo123!", 10);
   return {
     products: structuredClone(products),
@@ -77,7 +73,7 @@ function seed(): State {
       {
         id: "u_admin",
         name: "Maison Admin",
-        email: "admin@maisonatelier.com",
+        email: process.env.SEED_ADMIN_EMAIL || "admin@maisonatelier.com",
         passwordHash: adminHash,
         role: "admin",
         loyaltyPoints: 0,
@@ -105,14 +101,14 @@ function refreshCatalog(state: State) {
   let changed = false;
   const byId = Object.fromEntries(products.map((p) => [p.id, p]));
   for (const p of state.products) {
-    const seed = byId[p.id];
-    if (seed) {
-      if (JSON.stringify(p.images) !== JSON.stringify(seed.images)) {
-        p.images = seed.images;
+    const item = byId[p.id];
+    if (item) {
+      if (JSON.stringify(p.images) !== JSON.stringify(item.images)) {
+        p.images = item.images;
         changed = true;
       }
-      if (JSON.stringify(p.lookItems || []) !== JSON.stringify(seed.lookItems || [])) {
-        p.lookItems = seed.lookItems;
+      if (JSON.stringify(p.lookItems || []) !== JSON.stringify(item.lookItems || [])) {
+        p.lookItems = item.lookItems;
         changed = true;
       }
     } else if (!p.images?.length) {
@@ -120,9 +116,9 @@ function refreshCatalog(state: State) {
       changed = true;
     }
   }
-  for (const seed of products) {
-    if (!state.products.some((p) => p.id === seed.id)) {
-      state.products.push(structuredClone(seed));
+  for (const item of products) {
+    if (!state.products.some((p) => p.id === item.id)) {
+      state.products.push(structuredClone(item));
       changed = true;
     }
   }
@@ -133,35 +129,58 @@ function refreshCatalog(state: State) {
   return changed;
 }
 
-let cache: State | null = null;
-let cacheMtime = 0;
-
 function readState(): State {
-  const file = dataPath();
-  if (existsSync(file)) {
-    const mtime = statSync(file).mtimeMs;
-    if (cache && cacheMtime === mtime) return cache;
-    cache = JSON.parse(readFileSync(file, "utf8")) as State;
-    if (!cache.settings) cache.settings = { ...defaultSettings };
-    if (refreshCatalog(cache)) {
-      saveState();
-      return cache;
-    }
-    cacheMtime = mtime;
-    return cache;
+  if (g.__maisonState) {
+    refreshCatalog(g.__maisonState);
+    return g.__maisonState;
   }
-  cache = seed();
-  saveState();
-  return cache;
+
+  if (!isVercel()) {
+    try {
+      const file = dataPath();
+      if (existsSync(file)) {
+        const mtime = statSync(file).mtimeMs;
+        if (g.__maisonState && g.__maisonMtime === mtime) return g.__maisonState;
+        const parsed = JSON.parse(readFileSync(file, "utf8")) as State;
+        if (!parsed.settings) parsed.settings = { ...defaultSettings };
+        refreshCatalog(parsed);
+        g.__maisonState = parsed;
+        g.__maisonMtime = mtime;
+        return parsed;
+      }
+    } catch {
+      /* fall through to memory seed */
+    }
+  }
+
+  const state = seed();
+  refreshCatalog(state);
+  g.__maisonState = state;
+  if (!isVercel()) {
+    try {
+      saveState();
+    } catch {
+      /* ignore on restricted FS */
+    }
+  }
+  return state;
 }
 
 export function saveState() {
-  const file = dataPath();
-  mkdirSync(path.dirname(file), { recursive: true });
-  const state = cache || readState();
-  writeFileSync(file, JSON.stringify(state, null, 2));
-  cache = state;
-  cacheMtime = existsSync(file) ? statSync(file).mtimeMs : Date.now();
+  const state = g.__maisonState || readState();
+  g.__maisonState = state;
+  if (isVercel()) {
+    g.__maisonMtime = Date.now();
+    return;
+  }
+  try {
+    const file = dataPath();
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(state, null, 2));
+    g.__maisonMtime = existsSync(file) ? statSync(file).mtimeMs : Date.now();
+  } catch {
+    g.__maisonMtime = Date.now();
+  }
 }
 
 export const db = {

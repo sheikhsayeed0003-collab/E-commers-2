@@ -1,27 +1,33 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { db, nextId, saveState, tierFromPoints } from "@/lib/store";
-import type { CartItem } from "@/lib/types";
+import type { CartItem, Currency, Order, PaymentStatus } from "@/lib/types";
 
 export async function POST(req: Request) {
   const session = await getSession();
   const body = await req.json();
   const items: CartItem[] = body.items || [];
   const shipping = body.shipping;
-  const currency = body.currency || "USD";
+  const currency: Currency = body.currency === "BDT" ? "BDT" : "USD";
   if (!items.length) return NextResponse.json({ error: "Cart is empty." }, { status: 400 });
 
   const totalUsd = items.reduce((s, i) => s + i.priceUsd * i.qty, 0);
-  const order = {
+  const order: Order = {
     id: nextId("ord"),
     userId: session?.id || "guest",
     items,
     totalUsd,
     currency,
     stripePaymentId: body.paymentIntentId || `demo_${Date.now()}`,
-    paymentStatus: "pending" as const,
-    deliveryStatus: "processing" as const,
-    shipping,
+    paymentStatus: "pending" as PaymentStatus,
+    deliveryStatus: "processing",
+    shipping: shipping || {
+      name: "",
+      line1: "",
+      city: "",
+      country: "",
+      postal: "",
+    },
     createdAt: new Date().toISOString(),
   };
   db.orders().push(order);

@@ -3,6 +3,8 @@ import path from "path";
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 
+export const runtime = "nodejs";
+
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session || session.role !== "admin") {
@@ -17,6 +19,7 @@ export async function POST(req: Request) {
   const cloud = process.env.CLOUDINARY_CLOUD_NAME;
   const key = process.env.CLOUDINARY_API_KEY;
   const secret = process.env.CLOUDINARY_API_SECRET;
+  const onVercel = Boolean(process.env.VERCEL);
 
   if (cloud && key && secret) {
     const { v2: cloudinary } = await import("cloudinary");
@@ -27,14 +30,29 @@ export async function POST(req: Request) {
       const uploaded = await cloudinary.uploader.upload(dataUri, { folder: "maison-atelier" });
       urls.push(uploaded.secure_url);
     }
-  } else {
-    const dir = path.join(process.cwd(), "public", "uploads");
-    await mkdir(dir, { recursive: true });
+  } else if (onVercel) {
+    // Serverless FS is not public — store as data URLs so images still render
     for (const file of files) {
-      const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const filename = `${Date.now()}-${safe}`;
-      await writeFile(path.join(dir, filename), Buffer.from(await file.arrayBuffer()));
-      urls.push(`/uploads/${filename}`);
+      const buf = Buffer.from(await file.arrayBuffer());
+      const mime = file.type || "image/jpeg";
+      urls.push(`data:${mime};base64,${buf.toString("base64")}`);
+    }
+  } else {
+    try {
+      const dir = path.join(process.cwd(), "public", "uploads");
+      await mkdir(dir, { recursive: true });
+      for (const file of files) {
+        const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filename = `${Date.now()}-${safe}`;
+        await writeFile(path.join(dir, filename), Buffer.from(await file.arrayBuffer()));
+        urls.push(`/uploads/${filename}`);
+      }
+    } catch {
+      for (const file of files) {
+        const buf = Buffer.from(await file.arrayBuffer());
+        const mime = file.type || "image/jpeg";
+        urls.push(`data:${mime};base64,${buf.toString("base64")}`);
+      }
     }
   }
 
