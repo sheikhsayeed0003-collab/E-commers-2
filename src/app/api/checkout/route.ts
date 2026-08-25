@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     items,
     totalUsd,
     currency,
-    stripePaymentId: body.paymentIntentId || `demo_${Date.now()}`,
+    stripePaymentId: undefined,
     paymentStatus: "pending" as PaymentStatus,
     deliveryStatus: "processing",
     shipping: shipping || {
@@ -41,7 +41,9 @@ export async function POST(req: Request) {
   }
 
   const secret = process.env.STRIPE_SECRET_KEY;
-  if (secret && secret.startsWith("sk_")) {
+  const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || null;
+
+  if (secret?.startsWith("sk_") && publishableKey?.startsWith("pk_")) {
     try {
       const Stripe = (await import("stripe")).default;
       const stripe = new Stripe(secret);
@@ -49,38 +51,27 @@ export async function POST(req: Request) {
         amount: Math.round(totalUsd * 100),
         currency: "usd",
         metadata: { orderId: order.id },
-        payment_method: "pm_card_visa",
-        confirm: true,
-        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+        automatic_payment_methods: { enabled: true },
       });
       order.stripePaymentId = intent.id;
-      if (intent.status === "succeeded") {
-        order.paymentStatus = "paid";
-        if (session) {
-          const user = db.users().find((u) => u.id === session.id);
-          if (user) {
-            user.loyaltyPoints += Math.round(totalUsd);
-            user.pendingPoints = Math.max(0, user.pendingPoints - Math.round(totalUsd));
-            user.tier = tierFromPoints(user.loyaltyPoints);
-          }
-        }
-      }
       saveState();
       return NextResponse.json({
         order,
         clientSecret: intent.client_secret,
-        publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || null,
+        publishableKey,
         stripe: true,
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Stripe payment failed";
+      const message = err instanceof Error ? err.message : "Stripe setup failed";
       order.paymentStatus = "failed";
       saveState();
-      return NextResponse.json({ error: message, order }, { status: 402 });
+      return NextResponse.json({ error: message }, { status: 402 });
     }
   }
 
+  // Demo fallback when keys are missing
   order.paymentStatus = "paid";
+  order.stripePaymentId = `demo_${Date.now()}`;
   if (session) {
     const user = db.users().find((u) => u.id === session.id);
     if (user) {
